@@ -1,0 +1,71 @@
+import pandas as pd
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from datetime import datetime
+
+# Load CSV
+df = pd.read_csv('data.csv')
+
+# Step 1: Data Preprocessing
+# Clean Text Data
+text_columns = ['column1', 'column2']  # Example text columns
+for col in text_columns:
+    df[col] = df[col].str.lower().str.replace('[^\w\s]', '', regex=True)
+
+# Handle Boolean Columns
+boolean_columns = ['is_active', 'has_subscription']  # Example boolean columns
+for col in boolean_columns:
+    df[col] = df[col].astype(int)
+
+# Handle Date Columns
+date_columns = ['date_of_purchase', 'last_update']  # Example date columns
+for col in date_columns:
+    df[col] = pd.to_datetime(df[col], errors='coerce')  # Convert to datetime, handle non-convertible with NaN
+    df[f'{col}_year'] = df[col].dt.year
+    df[f'{col}_month'] = df[col].dt.month
+    df[f'{col}_day'] = df[col].dt.day
+    df[f'{col}_dayofweek'] = df[col].dt.dayofweek
+    df[f'{col}_timestamp'] = df[col].astype(int) // 10**9  # Convert to seconds since epoch
+    # Optionally, remove the original date column if no longer needed
+    # df = df.drop(col, axis=1)
+
+# Handle Integer Columns
+integer_columns = ['quantity', 'age']  # Example integer columns
+for col in integer_columns:
+    df[col] = df[col].astype(int)
+
+# Vectorize Text Data
+tfidf_vectorizer = TfidfVectorizer(max_features=1000)
+for col in text_columns:
+    tfidf_matrix = tfidf_vectorizer.fit_transform(df[col].fillna(''))
+    # Convert sparse matrix to dataframe, fillna('') handles missing text values
+    tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=tfidf_vectorizer.get_feature_names_out())
+    df = pd.concat([df, tfidf_df], axis=1).drop(columns=[col])
+
+# Encode Categorical Data
+le = LabelEncoder()
+for col in df.select_dtypes(include=['object']).columns:
+    df[col] = le.fit_transform(df[col].astype(str))  # Convert to string to handle NaN values
+
+# Normalize/Standardize Numeric Columns (except binary/boolean which are already 0 or 1)
+numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+# Exclude boolean columns from normalization if you've already converted them to 0/1
+numeric_columns = [col for col in numeric_columns if col not in boolean_columns]
+scaler = StandardScaler()
+df[numeric_columns] = scaler.fit_transform(df[numeric_columns])
+
+# Handle Missing Values - Example strategy:
+# For numeric columns, filling with mean might be appropriate
+for col in df.select_dtypes(include=[np.number]).columns:
+    df[col] = df[col].fillna(df[col].mean())
+
+# For categorical or text data, you might choose a different strategy like mode or a new category
+for col in df.select_dtypes(include=['object']).columns:
+    df[col] = df[col].fillna(df[col].mode()[0])
+
+# Assuming 'root_cause' is your target variable
+X = df.drop('root_cause', axis=1)
+y = df['root_cause']
+
+# From here, you can proceed with feature selection, model training, etc., as described in the first response.
